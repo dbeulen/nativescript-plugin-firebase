@@ -759,6 +759,7 @@ export interface DynamicLink {
         port: number;
     }
 	
+export function createDynamicLink(options: any): Promise<string>; //TODO Create proper interface for options
 
 // Auth
 export function login(options: LoginOptions): Promise<User>;

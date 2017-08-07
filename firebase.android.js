@@ -2158,4 +2158,143 @@ var dynamicLinksEnabled = new lazy(function () {
 	});
 })()
 
+
+//Create Dynamic links
+firebase.createDynamicLink = function (arg) {
+  return new Promise(function (resolve, reject) {
+		try {
+		  if (typeof(com.google.android.gms.appinvite) === "undefined") {
+				reject("Uncomment invites in the plugin's include.gradle first");
+				return;
+		  }
+		   if (!arg.link || !arg.dynamicLinkDomain) {
+        reject("The mandatory 'link' or 'dynamicLinkDomain' argument is missing");
+        return;
+      }
+
+		 	firebaseDynamicLinks = com.google.firebase.dynamiclinks.FirebaseDynamicLinks.getInstance();
+			builder = firebaseDynamicLinks.createDynamicLink()
+								.setLink(android.net.Uri.parse(arg.link))
+								.setDynamicLinkDomain(arg.dynamicLinkDomain);
+			
+			if(arg.androidParameters){
+				if (!arg.androidParameters.packagename) {
+	        reject("The mandatory 'packagename' argument is missing (Only if AndroidParameters is provided)");
+	        return;
+	      }
+				androidParameters = new com.google.firebase.dynamiclinks.DynamicLink.AndroidParameters
+				 	.Builder(arg.androidParameters.packagename);
+				 	if(arg.androidParameters.minimumVersion){
+				 		androidParameters.setMinimumVersion(arg.androidParameters.minimumVersion);
+				 	}
+				 	if(arg.androidParameters.fallbackUrl){
+				 		androidParameters.setFallbackUrl(android.net.Uri.parse(arg.androidParameters.fallbackUrl)); //TODO Looks like this does not work
+				 	}
+        	builder.setAndroidParameters(androidParameters.build());
+			}
+			// NOT TESTED
+			/*if(arg.iosParameters){
+				if (!arg.iosParameters.bundleId) {
+	        reject("The mandatory 'bundleId' argument is missing (Only if iosParameters is provided)");
+	        return;
+	      }
+				iosParameters = new com.google.firebase.dynamiclinks.DynamicLink.IosParameters
+				 	.Builder(arg.iosParameters.bundleId);
+				 	if(arg.iosParameters.minimumVersion){
+				 		iosParameters.setAppStoreId(arg.iosParameters.appStoreId);
+				 	}
+				 	if(arg.iosParameters.customScheme){
+				 		iosParameters.setCustomScheme(arg.iosParameters.customScheme);
+				 	}
+				 	if(arg.iosParameters.fallbackUrl){
+				 		iosParameters.setFallbackUrl(arg.iosParameters.fallbackUrl);
+				 	}
+				 	if(arg.iosParameters.ipadBundleId){
+				 		iosParameters.setIpadBundleId(arg.iosParameters.ipadBundleId);
+				 	}
+				 	if(arg.iosParameters.ipadFallbackUrl){
+				 		iosParameters.setIpadFallbackUrl(arg.iosParameters.ipadFallbackUrl);
+				 	}
+				 	if(arg.iosParameters.minimumVersion){
+				 		iosParameters.setMinimumVersion(arg.iosParameters.minimumVersion);
+				 	}
+        	builder.setIosParameters(iosParameters.build());
+			}*/
+
+//NOT TESTED
+/*		if(arg.GoogleAnalyticsParameters){
+				if (!arg.GoogleAnalyticsParameters.source || !arg.GoogleAnalyticsParameters.medium || !arg.GoogleAnalyticsParameters.campain) {
+	        reject("The mandatory 'source' or 'medium' or 'campain' argument is missing (Only if iosParameters is provided)");
+	        return;
+	      }
+				GoogleAnalyticsParameters = new com.google.firebase.dynamiclinks.DynamicLink.GoogleAnalyticsParameters
+				 	.Builder(arg.GoogleAnalyticsParameters.source,arg.GoogleAnalyticsParameters.medium,arg.GoogleAnalyticsParameters.campain);
+				 	if(arg.GoogleAnalyticsParameters.content){
+				 		GoogleAnalyticsParameters.setContent(arg.GoogleAnalyticsParameters.content);
+				 	}
+				 	if(arg.GoogleAnalyticsParameters.term){
+				 		GoogleAnalyticsParameters.setTerm(arg.GoogleAnalyticsParameters.term);
+				 	}
+        	builder.setGoogleAnalyticsParameters(GoogleAnalyticsParameters.build());
+			}*/
+
+//NOT TESTED
+/*		if(arg.ItunesConnectAnalyticsParameters){
+				ItunesConnectAnalyticsParameters = new com.google.firebase.dynamiclinks.DynamicLink.ItunesConnectAnalyticsParameters
+				 	.Builder();
+				 	if(arg.ItunesConnectAnalyticsParameters.content){
+				 		ItunesConnectAnalyticsParameters.setAffiliateToken(arg.ItunesConnectAnalyticsParameters.affiliateToken);
+				 	}
+				 	if(arg.ItunesConnectAnalyticsParameters.term){
+				 		ItunesConnectAnalyticsParameters.setCampaignToken(arg.ItunesConnectAnalyticsParameters.campaignToken);
+				 	}
+				 	if(arg.ItunesConnectAnalyticsParameters.term){
+				 		ItunesConnectAnalyticsParameters.setProviderToken(arg.ItunesConnectAnalyticsParameters.providerToken);
+				 	}
+        	builder.setItunesConnectAnalyticsParameters(ItunesConnectAnalyticsParameters.build());
+			}*/
+
+			//NOT TESTED
+			/*if(arg.socialMetaTagParameters){
+				socialMetaTagParameters = new com.google.firebase.dynamiclinks.DynamicLink.SocialMetaTagParameters
+				 	.Builder();
+				 	if(arg.socialMetaTagParameters.description){
+				 		socialMetaTagParameters.setDescription(arg.socialMetaTagParameters.description);
+				 	}
+				 	if(arg.socialMetaTagParameters.imageUrl){
+				 		socialMetaTagParameters.setImageUrl(arg.socialMetaTagParameters.imageUrl);
+				 	}
+				 	if(arg.socialMetaTagParameters.title){
+				 		socialMetaTagParameters.setTitle(arg.socialMetaTagParameters.title);
+				 	}
+        	builder.setSocialMetaTagParameters(socialMetaTagParameters.build());
+			}*/
+			var createDynamicLinkComplete = new com.google.android.gms.tasks.OnCompleteListener({
+				onComplete: function(task) {
+
+				  if (task.isSuccessful() && task.getResult() != null) {
+				  	result = task.getResult().getShortLink(); 
+				  	console.log(result);
+				  	resolve(result);
+				  }
+				  else{
+				  	console.log("test");
+				  	reject(task.getException()); 
+				  }
+				},
+				onFailure: function(err){
+					reject(err);
+				}
+		  });
+
+		 	builder.buildShortDynamicLink()
+		  	.addOnCompleteListener(createDynamicLinkComplete);
+
+		} catch (ex) {
+		  console.log("Error in firebase.createDynamicLink: " + ex);
+		  reject(ex);
+		}
+  });
+};
+
 module.exports = firebase;

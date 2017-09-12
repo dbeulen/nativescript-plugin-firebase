@@ -3,6 +3,37 @@
 [Firebase iOS SDK Changelog](https://firebase.google.com/support/release-notes/ios)
 [Firebase Android SDK Changelog](https://firebase.google.com/support/release-notes/android)
 
+## 4.1.1 (2017, September 9)
+
+### Fixes
+- [#482](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/482) Update to 4.0.1 and got error: Cannot read property 'initialize' of undefined
+
+
+## 4.1.0 (2017, September 8)
+
+### New
+- [#476](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/476) Moved AdMob init to firebase.init, added AdListener to showBanner()
+- [#478](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/478) Invites on Android: AppInviteApi has been deprecated
+- [#479](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/479) Is anybody using the invites part? I can't get the deeplink or invitation id.
+
+### Fixes
+- [#319](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/319) Unable to query by child that equals to null
+- [#475](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/475) Broken firebase API broken since 8/26
+
+
+## 4.0.6 (2017, August 23)
+
+### New
+- [#443](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/pull/443) fixed invitation sample code
+- [#444](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/pull/444) Updated how options.*.value is checked to allow booleans and numbers
+- [#449](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/pull/449) Mark init and getRemoteConfig for profiling
+
+### Fixes
+- [#328](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/328) Query range with START_AT not fetching data as expected
+- [#438](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/438) Query : range not working when value is number
+- [#445](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/pull/445) Skip linking for anonymous users
+- [464](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/464) 'phoneNumber' is missing in login result TypeScript definition
+
 
 ## 4.0.5 (2017, July 22)
 

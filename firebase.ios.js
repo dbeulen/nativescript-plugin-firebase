@@ -12,6 +12,7 @@ firebase._pendingNotifications = [];
 firebase._receivedPushTokenCallback = null;
 firebase._gIDAuthentication = null;
 firebase._cachedInvitation = null;
+firebase._cachedDynamicLink = null;
 
 firebase._addObserver = function (eventName, callback) {
   var queue = utils.ios.getter(NSOperationQueue, NSOperationQueue.mainQueue);
@@ -56,7 +57,7 @@ function addBackgroundRemoteNotificationHandler(appDelegate) {
   }
 }
 
-firebase.addAppDelegateMethods = function(appDelegate) {
+firebase.addAppDelegateMethods = function (appDelegate) {
   // we need the launchOptions for this one so it's a bit hard to use the UIApplicationDidFinishLaunchingNotification pattern we're using for other things
   appDelegate.prototype.applicationDidFinishLaunchingWithOptions = function (application, launchOptions) {
     // If the app was terminated and the iOS is launching it in result of push notification tapped by the user, this will hold the notification data.
@@ -74,33 +75,42 @@ firebase.addAppDelegateMethods = function(appDelegate) {
   };
 
   // there's no notification event to hook into for this one, so using the appDelegate
-  appDelegate.prototype.applicationOpenURLSourceApplicationAnnotation = function (application, url, sourceApplication, annotation) {
-    var result = false;
-    if (typeof(FBSDKApplicationDelegate) !== "undefined") {
-      result = FBSDKApplicationDelegate.sharedInstance().applicationOpenURLSourceApplicationAnnotation(application, url, sourceApplication, annotation);
-    }
-    // for iOS <= 8
-    if (typeof(GIDSignIn) !== "undefined") {
-      result = result || GIDSignIn.sharedInstance().handleURLSourceApplicationAnnotation(url, sourceApplication, annotation);
-    }
-
-    // Handle App Invite requests
-    if (typeof(FIRInvites) !== "undefined") {
-      var receivedInvite = FIRInvites.handleURLSourceApplicationAnnotation(url, sourceApplication, annotation);
-      if (receivedInvite) {
-        console.log("Deep link from " + sourceApplication + ", Invite ID: " + invite.invideId + ", App URL: " + invite.deepLink);
-        this._cachedInvitation = {
-          deepLink: invite.deepLink,
-          invitationId: invite.invideId
-        };
-        result = true;
+  if (typeof(FBSDKApplicationDelegate) !== "undefined" || typeof(GIDSignIn) !== "undefined" || typeof(FIRInvites) !== "undefined" || typeof(FIRDynamicLink) !== "undefined") {
+    appDelegate.prototype.applicationOpenURLSourceApplicationAnnotation = function (application, url, sourceApplication, annotation) {
+      var result = false;
+      if (typeof(FBSDKApplicationDelegate) !== "undefined") {
+        result = FBSDKApplicationDelegate.sharedInstance().applicationOpenURLSourceApplicationAnnotation(application, url, sourceApplication, annotation);
       }
-    }
 
-    return result;
-  };
+      if (typeof(GIDSignIn) !== "undefined") {
+        result = result || GIDSignIn.sharedInstance().handleURLSourceApplicationAnnotation(url, sourceApplication, annotation);
+      }
 
-  if (typeof(GIDSignIn) !== "undefined") {
+      if (typeof(FIRInvites) !== "undefined") {
+        var receivedInvite = FIRInvites.handleURLSourceApplicationAnnotation(url, sourceApplication, annotation);
+        if (receivedInvite) {
+          console.log("Deep link from " + sourceApplication + ", Invite ID: " + invite.invideId + ", App URL: " + invite.deepLink);
+          this._cachedInvitation = {
+            deepLink: invite.deepLink,
+            invitationId: invite.invideId
+          };
+          result = true;
+        }
+      }
+
+      if (typeof(FIRDynamicLink) !== "undefined") {
+        var dynamicLink = FIRDynamicLinks.dynamicLinks().dynamicLinkFromCustomSchemeURL(url)
+        if (dynamicLink) {
+          this._cachedDeepLink = dynamicLink.url.absoluteString;
+          result = true;
+        }
+      }
+
+      return result;
+    };
+  }
+
+  if (typeof(FBSDKApplicationDelegate) !== "undefined" || typeof(GIDSignIn) !== "undefined" || typeof(FIRDynamicLink) !== "undefined") {
     appDelegate.prototype.applicationOpenURLOptions = function (application, url, options) {
       var result = false;
       if (typeof(FBSDKApplicationDelegate) !== "undefined") {
@@ -110,11 +120,29 @@ firebase.addAppDelegateMethods = function(appDelegate) {
             options.valueForKey(UIApplicationOpenURLOptionsSourceApplicationKey),
             options.valueForKey(UIApplicationOpenURLOptionsAnnotationKey));
       }
-      // for iOS >= 9
-      result = result || GIDSignIn.sharedInstance().handleURLSourceApplicationAnnotation(
-              url,
-              options.valueForKey(UIApplicationOpenURLOptionsSourceApplicationKey),
-              options.valueForKey(UIApplicationOpenURLOptionsAnnotationKey));
+
+      if (typeof(GIDSignIn) !== "undefined") {
+        result = result || GIDSignIn.sharedInstance().handleURLSourceApplicationAnnotation(
+            url,
+            options.valueForKey(UIApplicationOpenURLOptionsSourceApplicationKey),
+            options.valueForKey(UIApplicationOpenURLOptionsAnnotationKey));
+      }
+
+      if (typeof(FIRDynamicLink) !== "undefined") {
+        var dynamicLink = FIRDynamicLinks.dynamicLinks().dynamicLinkFromCustomSchemeURL(url)
+        if (dynamicLink) {
+          if (dynamicLink.url !== null) {
+            console.log(">>> dynamicLink.url.absoluteString: " + dynamicLink.url.absoluteString);
+            if (this._dynamicLinkCallback) {
+              this._dynamicLinkCallback(dynamicLink.url.absoluteString);
+            } else {
+              this._cachedDeepLink = dynamicLink.url.absoluteString;
+            }
+            result = true;
+          }
+        }
+      }
+
       return result;
     };
   }
@@ -130,7 +158,7 @@ firebase.fetchProvidersForEmail = function (email) {
         return;
       }
 
-      FIRAuth.auth().fetchProvidersForEmailCompletion(email, function(providerNSArray, error) /* FIRProviderQueryCallback */ {
+      FIRAuth.auth().fetchProvidersForEmailCompletion(email, function (providerNSArray, error) /* FIRProviderQueryCallback */ {
         if (error) {
           reject(error.localizedDescription);
         } else {
@@ -180,6 +208,30 @@ firebase.addOnMessageReceivedCallback = function (callback) {
   });
 };
 
+firebase.addOnDynamicLinkReceivedCallback = function (callback) {
+  return new Promise(function (resolve, reject) {
+    try {
+      if (typeof(FIRDynamicLink) === "undefined") {
+        reject("Enable FIRInvites in Podfile first");
+        return;
+      }
+
+      firebase._dynamicLinkCallback = callback;
+
+      // if the app was launched from a dynamic link, process it now
+      if (firebase._cachedDynamicLink !== null) {
+        callback(firebase._cachedDynamicLink);
+        firebase._cachedDynamicLink = null;
+      }
+
+      resolve();
+    } catch (ex) {
+      console.log("Error in firebase.addOnDynamicLinkReceivedCallback: " + ex);
+      reject(ex);
+    }
+  });
+};
+
 firebase.addOnPushTokenReceivedCallback = function (callback) {
   return new Promise(function (resolve, reject) {
     try {
@@ -221,10 +273,10 @@ firebase.unregisterForPushNotifications = function (callback) {
   });
 };
 
-firebase._processPendingNotifications = function() {
+firebase._processPendingNotifications = function () {
   var app = utils.ios.getter(UIApplication, UIApplication.sharedApplication);
   if (!app) {
-    application.on("launch", function() {
+    application.on("launch", function () {
       firebase._processPendingNotifications();
     });
     return;
@@ -255,7 +307,7 @@ firebase._onTokenRefreshNotification = function (token) {
     firebase._receivedPushTokenCallback(token);
   }
 
-  FIRMessaging.messaging().connectWithCompletion(function(error) {
+  FIRMessaging.messaging().connectWithCompletion(function (error) {
     if (error) {
       // this is not fatal and it scares the hell out of ppl so not logging it
       // console.log("Firebase was unable to connect to FCM. Error: " + error);
@@ -270,7 +322,7 @@ firebase._registerForRemoteNotificationsRanThisSession = false;
 firebase._registerForRemoteNotifications = function () {
   var app = utils.ios.getter(UIApplication, UIApplication.sharedApplication);
   if (!app) {
-    application.on("launch", function() {
+    application.on("launch", function () {
       firebase._registerForRemoteNotifications();
     });
     return;
@@ -345,17 +397,23 @@ function getAppDelegate() {
   // Play nice with other plugins by not completely ignoring anything already added to the appdelegate
   if (application.ios.delegate === undefined) {
     var __extends = this.__extends || function (d, b) {
-          for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
-          function __() { this.constructor = d; }
-          __.prototype = b.prototype;
-          d.prototype = new __();
-        };
+      for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
+
+      function __() {
+        this.constructor = d;
+      }
+
+      __.prototype = b.prototype;
+      d.prototype = new __();
+    };
 
     var appDelegate = (function (_super) {
       __extends(appDelegate, _super);
+
       function appDelegate() {
         _super.apply(this, arguments);
       }
+
       appDelegate.ObjCProtocols = [UIApplicationDelegate];
       return appDelegate;
     })(UIResponder);
@@ -392,7 +450,7 @@ function prepAppDelegate() {
     firebase._addObserver(UIApplicationWillEnterForegroundNotification, function (appNotification) {
       // Firebase notifications (FCM)
       if (firebase._messagingConnected !== null) {
-        FIRMessaging.messaging().connectWithCompletion(function(error) {
+        FIRMessaging.messaging().connectWithCompletion(function (error) {
           if (!error) {
             firebase._messagingConnected = true;
           }
@@ -405,7 +463,7 @@ function prepAppDelegate() {
 
 prepAppDelegate();
 
-firebase.toJsObject = function(objCObj) {
+firebase.toJsObject = function (objCObj) {
   if (objCObj === null || typeof objCObj != "object") {
     return objCObj;
   }
@@ -454,7 +512,7 @@ firebase.toJsObject = function(objCObj) {
   return node;
 };
 
-firebase.getCallbackData = function(type, snapshot) {
+firebase.getCallbackData = function (type, snapshot) {
   return {
     type: type,
     key: snapshot.key,
@@ -479,8 +537,10 @@ firebase.init = function (arg) {
       function runInit() {
         arg = arg || {};
 
-        // this requires you to download GoogleService-Info.plist and
-        // it to app/App_Resources/iOS/, see https://firebase.google.com/support/guides/firebase-ios
+        // if deeplinks are used, then for this scheme to work the use must have added the bundle as a scheme to their plist (this is in our docs)
+        if (FIROptions.defaultOptions() !== null) {
+          FIROptions.defaultOptions().deepLinkURLScheme = utils.ios.getter(NSBundle, NSBundle.mainBundle).bundleIdentifier;
+        }
         FIRApp.configure();
 
         if (arg.persist) {
@@ -495,13 +555,13 @@ firebase.init = function (arg) {
             // project token is cached which leads to following type of error:
             // "[FirebaseDatabase] Authentication failed: invalid_token ..."
             FIRAuth.auth().signOut();
-          } catch(signOutErr) {
+          } catch (signOutErr) {
             console.log('Sign out of Firebase error: ' + signOutErr);
           }
         }
 
         if (arg.onAuthStateChanged) {
-          firebase.authStateListener = function(auth, user) {
+          firebase.authStateListener = function (auth, user) {
             arg.onAuthStateChanged({
               loggedIn: user !== null,
               user: toLoginResult(user)
@@ -512,13 +572,18 @@ firebase.init = function (arg) {
 
         // Listen to auth state changes
         if (!firebase.authStateListener) {
-          firebase.authStateListener = function(auth, user) {
+          firebase.authStateListener = function (auth, user) {
             firebase.notifyAuthStateListeners({
               loggedIn: user !== null,
               user: toLoginResult(user)
             });
           };
           FIRAuth.auth().addAuthStateDidChangeListener(firebase.authStateListener);
+        }
+
+        // Firebase DynamicLink
+        if (arg.onDynamicLinkCallback !== undefined) {
+          firebase.addOnDynamicLinkReceivedCallback(arg.onDynamicLinkCallback);
         }
 
         // Facebook Auth
@@ -682,7 +747,7 @@ firebase.admob.showBanner = function (arg) {
       // support rotation events
       application.on(application.orientationChangedEvent, function (data) {
         if (firebase.admob.adView !== null) {
-          firebase.admob.hideBanner().then(function(res) {
+          firebase.admob.hideBanner().then(function (res) {
             firebase.admob.createBanner(arg);
           });
         }
@@ -762,39 +827,39 @@ firebase.admob.hideBanner = function () {
   });
 };
 
-firebase.admob._getBannerType = function(size) {
+firebase.admob._getBannerType = function (size) {
   // see nativescript-admob's iOS sourcecode for why we're not using SDK-provided constants here
   if (size == firebase.admob.AD_SIZE.BANNER) {
     // return kGADAdSizeBanner;
-    return {"size":{"width":320,"height":50},"flags":0};
+    return {"size": {"width": 320, "height": 50}, "flags": 0};
   } else if (size == firebase.admob.AD_SIZE.LARGE_BANNER) {
     // return kGADAdSizeLargeBanner;
-    return {"size":{"width":320,"height":100},"flags":0};
+    return {"size": {"width": 320, "height": 100}, "flags": 0};
   } else if (size == firebase.admob.AD_SIZE.MEDIUM_RECTANGLE) {
     // return kGADAdSizeMediumRectangle;
-    return {"size":{"width":300,"height":250},"flags":0};
+    return {"size": {"width": 300, "height": 250}, "flags": 0};
   } else if (size == firebase.admob.AD_SIZE.FULL_BANNER) {
     // return kGADAdSizeFullBanner;
-    return {"size":{"width":468,"height":60},"flags":0};
+    return {"size": {"width": 468, "height": 60}, "flags": 0};
   } else if (size == firebase.admob.AD_SIZE.LEADERBOARD) {
     // return kGADAdSizeLeaderboard;
-    return {"size":{"width":728,"height":90},"flags":0};
+    return {"size": {"width": 728, "height": 90}, "flags": 0};
   } else if (size == firebase.admob.AD_SIZE.SKYSCRAPER) {
     // return kGADAdSizeSkyscraper;
-    return {"size":{"width":120,"height":600},"flags":0};
+    return {"size": {"width": 120, "height": 600}, "flags": 0};
   } else if (size == firebase.admob.AD_SIZE.SMART_BANNER || size == firebase.admob.AD_SIZE.FLUID) {
     var orientation = utils.ios.getter(UIDevice, UIDevice.currentDevice).orientation;
     var isIPad = platform.device.deviceType === DeviceType.Tablet;
     if (orientation == UIDeviceOrientation.UIDeviceOrientationPortrait || orientation == UIDeviceOrientation.UIDeviceOrientationPortraitUpsideDown) {
       // return kGADAdSizeSmartBannerPortrait;
-      return {"size":{"width":0,"height":0,"smartHeight":isIPad ? 90 : 50},"flags":18};
+      return {"size": {"width": 0, "height": 0, "smartHeight": isIPad ? 90 : 50}, "flags": 18};
     } else {
       // return kGADAdSizeSmartBannerLandscape;
-      return {"size":{"width":0,"height":0,"smartHeight":isIPad ? 90 : 32},"flags":26};
+      return {"size": {"width": 0, "height": 0, "smartHeight": isIPad ? 90 : 32}, "flags": 26};
     }
   } else {
     // return kGADAdSizeInvalid;
-    return {"size":{"width":-1,"height":-1},"flags":0};
+    return {"size": {"width": -1, "height": -1}, "flags": 0};
   }
 };
 
@@ -828,7 +893,7 @@ firebase.getRemoteConfig = function (arg) {
       }
       firebaseRemoteConfig.setDefaults(dic);
 
-      var onCompletion = function(remoteConfigFetchStatus, error) {
+      var onCompletion = function (remoteConfigFetchStatus, error) {
 
         if (remoteConfigFetchStatus == FIRRemoteConfigFetchStatusSuccess ||
             remoteConfigFetchStatus == FIRRemoteConfigFetchStatusThrottled) {
@@ -899,7 +964,7 @@ firebase.sendEmailVerification = function () {
 
       var user = fAuth.currentUser;
       if (user) {
-        var onCompletion = function(error) {
+        var onCompletion = function (error) {
           if (error) {
             reject(error.localizedDescription);
           } else {
@@ -945,14 +1010,15 @@ function toLoginResult(user) {
   }
 
   var providers = [];
-  for (i = 0, l = user.providerData.count; i < l; i++) {
+  for (var i = 0, l = user.providerData.count; i < l; i++) {
     var firUserInfo = user.providerData.objectAtIndex(i);
     var pid = firUserInfo.valueForKey("providerID");
-    if (pid==='facebook.com') {
+    if (pid === 'facebook.com') { // FIRFacebookAuthProviderID
       var fbCurrentAccessToken = FBSDKAccessToken.currentAccessToken();
-      providers.push({ id: pid, token: fbCurrentAccessToken?fbCurrentAccessToken.tokenString:null });
+      providers.push({id: pid, token: fbCurrentAccessToken ? fbCurrentAccessToken.tokenString : null});
+    } else {
+      providers.push({id: pid});
     }
-    else { providers.push({ id: pid }); }
   }
 
   return {
@@ -980,7 +1046,7 @@ firebase.getAuthToken = function (arg) {
 
       var user = fAuth.currentUser;
       if (user) {
-        var onCompletion = function(token, error) {
+        var onCompletion = function (token, error) {
           if (error) {
             reject(error.localizedDescription);
           } else {
@@ -1002,7 +1068,7 @@ firebase.login = function (arg) {
   return new Promise(function (resolve, reject) {
 
     try {
-      var onCompletion = function(user, error) {
+      var onCompletion = function (user, error) {
         if (error) {
           // also disconnect from Google otherwise ppl can't connect with a different account
           if (typeof(GIDSignIn) !== "undefined") {
@@ -1061,12 +1127,12 @@ firebase.login = function (arg) {
           return;
         }
 
-        FIRPhoneAuthProvider.provider().verifyPhoneNumberCompletion(arg.phoneOptions.phoneNumber, function(verificationID, error) {
+        FIRPhoneAuthProvider.provider().verifyPhoneNumberCompletion(arg.phoneOptions.phoneNumber, function (verificationID, error) {
           if (error) {
             reject(error.localizedDescription);
             return;
           }
-          firebase.requestPhoneAuthVerificationCode(function(userResponse) {
+          firebase.requestPhoneAuthVerificationCode(function (userResponse) {
             var fIRAuthCredential = FIRPhoneAuthProvider.provider().credentialWithVerificationIDVerificationCode(verificationID, userResponse);
             if (fAuth.currentUser) {
               var onCompletionLink = function (user, error) {
@@ -1201,7 +1267,7 @@ firebase.login = function (arg) {
         sIn.delegate = delegate;
         sIn.signIn();
       } else {
-        reject ("Unsupported auth type: " + arg.type);
+        reject("Unsupported auth type: " + arg.type);
       }
     } catch (ex) {
       console.log("Error in firebase.login: " + ex);
@@ -1256,7 +1322,7 @@ firebase.reauthenticate = function (arg) {
         return;
       }
 
-      var onCompletion = function(error) {
+      var onCompletion = function (error) {
         if (error) {
           reject(error.localizedDescription);
 
@@ -1276,7 +1342,7 @@ firebase.reauthenticate = function (arg) {
 firebase.resetPassword = function (arg) {
   return new Promise(function (resolve, reject) {
     try {
-      var onCompletion = function(error) {
+      var onCompletion = function (error) {
         if (error) {
           reject(error.localizedDescription);
         } else {
@@ -1299,7 +1365,7 @@ firebase.resetPassword = function (arg) {
 firebase.changePassword = function (arg) {
   return new Promise(function (resolve, reject) {
     try {
-      var onCompletion = function(error) {
+      var onCompletion = function (error) {
         if (error) {
           reject(error.localizedDescription);
         } else {
@@ -1327,7 +1393,7 @@ firebase.changePassword = function (arg) {
 firebase.createUser = function (arg) {
   return new Promise(function (resolve, reject) {
     try {
-      var onCompletion = function(user, error) {
+      var onCompletion = function (user, error) {
         if (error) {
           reject(error.localizedDescription);
         } else {
@@ -1359,7 +1425,7 @@ firebase.deleteUser = function (arg) {
         return;
       }
 
-      var onCompletion = function(user, error) {
+      var onCompletion = function (user, error) {
         if (error) {
           reject(error.localizedDescription);
         } else {
@@ -1412,7 +1478,7 @@ firebase.updateProfile = function (arg) {
   });
 };
 
-firebase._addObservers = function(to, updateCallback) {
+firebase._addObservers = function (to, updateCallback) {
   var listeners = [];
   listeners.push(to.observeEventTypeWithBlock(FIRDataEventType.FIRDataEventTypeChildAdded, function (snapshot) {
     updateCallback(firebase.getCallbackData('ChildAdded', snapshot));
@@ -1495,7 +1561,7 @@ firebase.removeEventListeners = function (listeners, path) {
       if (path !== undefined) {
         where = firebase.instance.childByAppendingPath(path);
       }
-      for (var i=0; i < listeners.length; i++) {
+      for (var i = 0; i < listeners.length; i++) {
         var listener = listeners[i];
         console.log("Removing listener at path " + path + ": " + listener);
         where.removeObserverWithHandle(listener);
@@ -1606,10 +1672,11 @@ firebase.query = function (updateCallback, path, options) {
 
       // range
       if (options.range && options.range.type) {
-        if (options.range.value === undefined || options.range.value === null) {
-          reject("Please set range.value");
-          return;
-        }
+        // https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/319
+        // if (options.range.value === undefined || options.range.value === null) {
+        //   reject("Please set range.value");
+        //   return;
+        // }
         if (options.range.type === firebase.QueryRangeType.START_AT) {
           query = query.queryStartingAtValue(options.range.value);
         } else if (options.range.type === firebase.QueryRangeType.END_AT) {
@@ -1624,10 +1691,10 @@ firebase.query = function (updateCallback, path, options) {
 
       // ranges
       if (options.ranges) {
-        for (var i=0; i < options.ranges.length; i++) {
+        for (var i = 0; i < options.ranges.length; i++) {
           var range = options.ranges[i];
           if (range.value === undefined || range.value === null) {
-            reject("Please set ranges["+i+"].value");
+            reject("Please set ranges[" + i + "].value");
             return;
           }
           if (range.type === firebase.QueryRangeType.START_AT) {
@@ -1637,7 +1704,7 @@ firebase.query = function (updateCallback, path, options) {
           } else if (range.type === firebase.QueryRangeType.EQUAL_TO) {
             query = query.queryEqualToValue(range.value);
           } else {
-            reject("Invalid ranges["+i+"].type, use constants like firebase.QueryRangeType.START_AT");
+            reject("Invalid ranges[" + i + "].type, use constants like firebase.QueryRangeType.START_AT");
             return;
           }
         }
@@ -1714,7 +1781,7 @@ firebase.uploadFile = function (arg) {
   return new Promise(function (resolve, reject) {
     try {
 
-      var onCompletion = function(metadata, error) {
+      var onCompletion = function (metadata, error) {
         if (error) {
           reject(error.localizedDescription);
         } else {
@@ -1758,7 +1825,7 @@ firebase.uploadFile = function (arg) {
 
       if (fIRStorageUploadTask !== null) {
         // Add a progress observer to an upload task
-        var fIRStorageHandle = fIRStorageUploadTask.observeStatusHandler(FIRStorageTaskStatusProgress, function(snapshot) {
+        var fIRStorageHandle = fIRStorageUploadTask.observeStatusHandler(FIRStorageTaskStatusProgress, function (snapshot) {
           if (!snapshot.error && typeof(arg.onProgress) === "function") {
             arg.onProgress({
               fractionCompleted: snapshot.progress.fractionCompleted,
@@ -1779,7 +1846,7 @@ firebase.downloadFile = function (arg) {
   return new Promise(function (resolve, reject) {
     try {
 
-      var onCompletion = function(url, error) {
+      var onCompletion = function (url, error) {
         if (error) {
           reject(error.localizedDescription);
         } else {
@@ -1828,7 +1895,7 @@ firebase.getDownloadUrl = function (arg) {
   return new Promise(function (resolve, reject) {
     try {
 
-      var onCompletion = function(url, error) {
+      var onCompletion = function (url, error) {
         if (error) {
           reject(error.localizedDescription);
         } else {
@@ -1857,7 +1924,7 @@ firebase.deleteFile = function (arg) {
   return new Promise(function (resolve, reject) {
     try {
 
-      var onCompletion = function(error) {
+      var onCompletion = function (error) {
         if (error) {
           reject(error.localizedDescription);
         } else {
@@ -1882,7 +1949,7 @@ firebase.deleteFile = function (arg) {
   });
 };
 
-firebase.subscribeToTopic = function(topicName){
+firebase.subscribeToTopic = function (topicName) {
   return new Promise(function (resolve, reject) {
     try {
 
@@ -1896,14 +1963,14 @@ firebase.subscribeToTopic = function(topicName){
       }
       FIRMessaging.messaging().subscribeToTopic(topicName);
       resolve();
-    } catch(ex){
+    } catch (ex) {
       console.log("Error in firebase.subscribeToTopic: " + ex);
       reject(ex);
     }
   });
 };
 
-firebase.unsubscribeFromTopic = function(topicName){
+firebase.unsubscribeFromTopic = function (topicName) {
   return new Promise(function (resolve, reject) {
     try {
 
@@ -1917,7 +1984,7 @@ firebase.unsubscribeFromTopic = function(topicName){
       }
       FIRMessaging.messaging().unsubscribeFromTopic(topicName);
       resolve();
-    } catch(ex){
+    } catch (ex) {
       console.log("Error in firebase.unsubscribeFromTopic: " + ex);
       reject(ex);
     }
@@ -2052,9 +2119,11 @@ firebase.invites.getInvitation = function () {
 
 var GADBannerViewDelegateImpl = (function (_super) {
   __extends(GADBannerViewDelegateImpl, _super);
+
   function GADBannerViewDelegateImpl() {
     _super.apply(this, arguments);
   }
+
   GADBannerViewDelegateImpl.new = function () {
     return _super.new.call(this);
   };
@@ -2077,6 +2146,7 @@ var GADBannerViewDelegateImpl = (function (_super) {
 
 var GIDSignInDelegateImpl = (function (_super) {
   __extends(GIDSignInDelegateImpl, _super);
+
   function GIDSignInDelegateImpl() {
     _super.apply(this, arguments);
   }
@@ -2101,6 +2171,7 @@ var GIDSignInDelegateImpl = (function (_super) {
 // see https://developer.apple.com/reference/usernotifications/unusernotificationcenterdelegate?language=objc
 var UNUserNotificationCenterDelegateImpl = (function (_super) {
   __extends(UNUserNotificationCenterDelegateImpl, _super);
+
   function UNUserNotificationCenterDelegateImpl() {
     _super.apply(this, arguments);
   }
@@ -2124,6 +2195,7 @@ var UNUserNotificationCenterDelegateImpl = (function (_super) {
 
 var FIRInviteDelegateImpl = (function (_super) {
   __extends(FIRInviteDelegateImpl, _super);
+
   function FIRInviteDelegateImpl() {
     _super.apply(this, arguments);
   }
@@ -2147,6 +2219,7 @@ var FIRInviteDelegateImpl = (function (_super) {
 // see https://firebase.google.com/docs/reference/ios/firebasemessaging/api/reference/Protocols/FIRMessagingDelegate
 var FIRMessagingDelegateImpl = (function (_super) {
   __extends(FIRMessagingDelegateImpl, _super);
+
   function FIRMessagingDelegateImpl() {
     _super.apply(this, arguments);
   }

@@ -4,6 +4,69 @@
 [Firebase Android SDK Changelog](https://firebase.google.com/support/release-notes/android)
 
 
+## 5.1.1 (2017, December 30)
+
+### Fixes
+- [#589](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/589) Firestore: doc.exists returns true for non-existing documents
+- [#564](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/564) Firebase Auth + WebPack crashing iOS application (when createUser is triggered) - BETTER FIX
+
+
+## 5.1.0 (2017, December 30)
+
+### Fixes
+- [#564](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/564) Firebase Auth + WebPack crashing iOS application (when createUser is triggered) - FIX
+- [#587](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/587) Push token is not always a string
+
+### New
+- [#590](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/590) Bump Firebase SDK versions
+
+
+## 5.0.5 (2017, December 19)
+
+### Fixes
+- [#581](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/581) sendEmailVerification - "Run init() first!"
+
+
+## 5.0.4 (2017, December 8)
+
+### Fixes
+- [#566](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/566) FIrebase Messages Error since 5.0.2
+
+
+## 5.0.3 (2017, December 7)
+
+### New
+- [#564](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/564) Firebase Auth + WebPack crashing iOS application (when createUser is triggered)
+
+### Fixes
+- [#563](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/563) Initialization problem on 5.0.2 on iOS
+- [#559](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/559) Firestore nested collections
+
+
+## 5.0.2 (2017, December 1)
+
+### New
+- [#518](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/518) Background Messages Android: fix foreground=true/false flag, removed notifications without 'from'
+
+### Revert
+- [#445](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/445) Skip linking for anonymous users
+
+
+## 5.0.1 (2017, November 28)
+
+### New
+- [#553](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/553) Firebase Realtime DB and Firestore in the same app
+
+
+## 5.0.0 (2017, November 28)
+
+### New
+- [#507](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/507) Firestore anytime soon?
+- [#547](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/547) Add a 'getValue' function to mimic the Web API's 'once'
+- [#548](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/548) Compatibility with the Firebase Web API
+- [#550](https://github.com/EddyVerbruggen/nativescript-plugin-firebase/issues/550) Add an Angular demo app
+
+
 ## 4.2.1 (2017, October 24)
 
 ### Fixes

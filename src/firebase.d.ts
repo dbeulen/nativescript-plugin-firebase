@@ -75,7 +75,7 @@ export enum ServerValue {
  */
 export interface InitOptions {
   /**
-   * Allow disk persistence. Default false.
+   * Allow disk persistence. Default true for Firestore, false for regular Firebase DB.
    */
   persist?: boolean;
   /**
@@ -268,6 +268,7 @@ export interface User {
   name?: string;
   phoneNumber?: string;
   anonymous: boolean;
+  isAnonymous: boolean; // This is used by the web API
   providers: Array<Provider>;
   profileImageURL?: string;
   /** iOS only */
@@ -469,7 +470,7 @@ export interface UploadFileOptions {
 }
 
 export interface UploadFileResult {
-
+  name: string;
 }
 
 export interface DownloadFileOptions {
@@ -538,6 +539,8 @@ export function init(options?: InitOptions): Promise<any>;
 
 // Database
 export function push(path: string, value: any): Promise<PushResult>;
+
+export function getValue(path: string): Promise<any>;
 
 export function setValue(path: string, value: any): Promise<any>;
 
@@ -780,6 +783,71 @@ export namespace dynamicLinks {
     matchConfidence?: MATCH_CONFIDENCE;
     minimumAppVersion?: string;
   }
+}
+
+export namespace firestore {
+  export type DocumentData = { [field: string]: any };
+  export type WhereFilterOp = '<' | '<=' | '==' | '>=' | '>';
+  export type OrderByDirection = 'desc' | 'asc';
+
+  export interface SetOptions {
+    merge?: boolean;
+  }
+
+  export interface DocumentSnapshot {
+    id: string;
+    exists: boolean;
+
+    data(): DocumentData;
+  }
+
+  export interface DocumentReference {
+    id: string;
+    collection: (collectionPath: string) => CollectionReference;
+    set: (document: any, options?: SetOptions) => Promise<void>;
+    get: () => Promise<DocumentSnapshot>;
+    update: (document: any) => Promise<void>;
+    delete: () => Promise<void>;
+    onSnapshot(callback: (doc: DocumentSnapshot) => void): () => void;
+  }
+
+  export interface Query {
+    get(): Promise<QuerySnapshot>;
+
+    where(fieldPath: string, opStr: WhereFilterOp, value: any): Query;
+
+    orderBy(fieldPath: string, directionStr: firestore.OrderByDirection): Query;
+
+    limit(limit: number): Query;
+  }
+
+  export interface CollectionReference extends Query {
+    id: string;
+
+    doc(documentPath?: string): DocumentReference;
+
+    add(data: DocumentData): Promise<DocumentReference>;
+  }
+
+  export interface QuerySnapshot {
+    docSnapshots: firestore.DocumentSnapshot[];
+
+    forEach(callback: (result: DocumentSnapshot) => void, thisArg?: any): void;
+  }
+
+  function collection(collectionPath: string): CollectionReference;
+
+  function doc(collectionPath: string, documentPath?: string): DocumentReference;
+
+  function add(collectionPath: string, documentData: any): Promise<DocumentReference>;
+
+  function set(collectionPath: string, documentPath: string, document: any, options?: any): Promise<void>;
+
+  function getCollection(collectionPath: string): Promise<QuerySnapshot>;
+
+  function getDocument(collectionPath: string, documentPath: string): Promise<DocumentSnapshot>;
+
+  function update(collectionPath: string, documentPath: string, document: any): Promise<void>;
 }
 
 // Auth
